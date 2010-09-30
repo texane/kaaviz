@@ -15,7 +15,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/fcntl.h>
-#include "bmp.h"
+#include "bmp.hh"
 
 
 
@@ -84,6 +84,9 @@ static int check_format(uint16_t bpp, int32_t width, int32_t height)
 
   n = (int64_t)width * height;
 
+#ifndef INT32_MAX
+# define INT32_MAX (2147483647)
+#endif
   if (n > INT32_MAX)
     return -1;
 
@@ -116,7 +119,7 @@ static int check_file_header(const struct file_header* hdr, size_t file_size)
   if (hdr->compression != 0)
     return -1;
 
-  if (hdr->data_size != (hdr->bpp * hdr->width * hdr->height))
+  if (hdr->data_size != (size_t)(hdr->bpp * hdr->width * hdr->height))
     return -1;
 
   return 0;
@@ -170,7 +173,7 @@ static int read_n(int fd, void* buf, size_t n)
 
 static int write_n(int fd, const void* buf, size_t n)
 {
-  return io_n(fd, (void*)write, (void*)buf, n);
+  return io_n(fd, (ssize_t(*)(int, void*, size_t))write, (void*)buf, n);
 }
 
 
@@ -182,7 +185,7 @@ struct bmp* bmp_create(void)
 {
   struct bmp* bmp;
 
-  bmp = malloc(sizeof(struct bmp));
+  bmp = (struct bmp*)malloc(sizeof(struct bmp));
   if (bmp == NULL)
     return NULL;
 
@@ -229,7 +232,7 @@ int bmp_load_file(struct bmp* bmp,
   if (fstat(fd, &st) == -1)
     goto on_error;
 
-  if (st.st_size < sizeof(struct file_header))
+  if ((size_t)st.st_size < sizeof(struct file_header))
     goto on_error;
   
   if (read_n(fd, &hdr, sizeof(struct file_header)) == -1)
@@ -240,7 +243,7 @@ int bmp_load_file(struct bmp* bmp,
 
   size = hdr.bpp * hdr.width * hdr.height;
 
-  if ((data = malloc(size)) == NULL)
+  if ((data = (uint8_t*)malloc(size)) == NULL)
     goto on_error;
 
   if (read_n(fd, data, size) == -1)
@@ -343,7 +346,7 @@ void* bmp_get_data(struct bmp* bmp)
     return NULL;
 
   if (bmp->data == NULL)
-    bmp->data = malloc(bmp->bpp * bmp->width * bmp->height);
+    bmp->data = (uint8_t*)malloc(bmp->bpp * bmp->width * bmp->height);
 
   return bmp->data;
 }

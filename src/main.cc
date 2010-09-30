@@ -2,7 +2,7 @@
 // Made by fabien le mentec <texane@gmail.com>
 // 
 // Started on  Wed Sep 29 21:18:01 2010 texane
-// Last update Thu Sep 30 05:08:29 2010 fabien le mentec
+// Last update Thu Sep 30 05:37:25 2010 fabien le mentec
 //
 
 
@@ -46,7 +46,8 @@ static int map_file(mapped_file_t* mf, const char* path)
   if (fstat(fd, &st) == -1)
     goto on_error;
 
-  mf->base = mmap(NULL, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
+  mf->base = (unsigned char*)mmap
+    (NULL, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
   if (mf->base == MAP_FAILED)
     goto on_error;
 
@@ -64,7 +65,7 @@ static int map_file(mapped_file_t* mf, const char* path)
 static void unmap_file(mapped_file_t* mf)
 {
   munmap(mf->base, mf->len);
-  mf->base = MAP_FAILED;
+  mf->base = (unsigned char*)MAP_FAILED;
   mf->len = 0;
 }
 
@@ -109,11 +110,11 @@ typedef struct trace_entry
   bool _isnew;
   std::string _statid;
 
-  struct trace_entry() : _isnew(true) {}
+  trace_entry() : _isnew(true) {}
 
 } trace_entry_t;
 
-static int next_word(char*& line, char* word)
+static int next_word(char*& line, char*& word)
 {
   for (; *line == ' '; ++line)
     ;
@@ -121,7 +122,7 @@ static int next_word(char*& line, char* word)
   if (*line == 0)
     return -1;
 
-  word = *line;
+  word = line;
 
   for (; *line && (*line != ' '); ++line)
     ;
@@ -157,6 +158,8 @@ typedef struct trace_info
   id_map_t _taskids;
   // statid -> index
   id_map_t _statids;
+  // max(times(tasks))
+  uint64_t _maxtime;
 } trace_info_t;
 
 static inline size_t id_to_index
@@ -169,6 +172,7 @@ static inline size_t id_to_index
 static int next_trace(mapped_file_t* mf, trace_entry_t& te)
 {
   char* line;
+  char* word;
 
   if (read_line(mf, &line) == -1)
     return -1;
@@ -181,7 +185,7 @@ static int next_trace(mapped_file_t* mf, trace_entry_t& te)
   // time
   if (next_word(line, word) == -1)
     return -1;
-  te._time = (uint64_t)strtoul(word);
+  te._time = (uint64_t)strtoul(word, NULL, 10);
 
   // isdone statid
   const char* statid = word;
@@ -199,74 +203,81 @@ static int next_trace(mapped_file_t* mf, trace_entry_t& te)
 
 static int load_trace_file(const char* path, trace_info_t& ti)
 {
-  mapped_file_t mf;
-  int error = -1;
-  size_t size1;
-  size_t size2;
-  size_t j = 0;
-  size_t i = 0;
-  char* line = NULL;
-
-  *m = NULL;
+  mapped_file_t mf = {NULL, 0, 0};
 
   if (map_file(&mf, path) == -1)
     return -1;
 
   trace_entry_t te;
-  while ((next_trace(&mf, &te)) != -1)
+  while ((next_trace(&mf, te)) != -1)
   {
     // is this a new task
-    slices_map_t::iterator smi = ti._slices.find(ti._taskid);
+    slices_map_t::iterator smi = ti._slices.find(te._taskid);
     if (smi == ti._slices.end())
     {
       slices_map_t::value_type keyval =
-	std::make_pair(ti._taskid, slice_list_t());
-      smi = ti._slices.insert(keyval)->first;
+	std::make_pair(te._taskid, slice_list_t());
+      smi = ti._slices.insert(keyval).first;
     }
 
     // is this a new state
     if (ti._statids.find(te._statid) == ti._statids.end())
     {
       id_map_t::value_type keyval =
-	std::make_pair(ti._statid, ti._statids.size());
+	std::make_pair(te._statid, ti._statids.size());
       ti._statids.insert(keyval);
     }
 
     // slice list for _taskid
     slice_list_t& sl = smi->second;
 
-    // close the last slice if needed
     if (sl.size())
     {
-      slice_list_t::iterator& last = sl.back();
-      if (last->_stop <= last->_start)
-	last->_stop = te._time;
+      // convert to relative time
+      te._time -= sl.front()._start;
+
+      // close the last slice if needed
+      slice_t& last = sl.back();
+      if (last._stop <= last._start)
+	last._stop = te._time;
     }
 
     // insert new slice if needed
     if (te._isnew == true)
-      sl.push_back(slice(id_to_index(te._statid), te._time));
+    {
+      const size_t index = id_to_index(te._statid, ti._statids);
+      sl.push_back(slice(index, te._time));
+    }
   }
 
-  // foreach task, close the last slice
+  // foreach task, close the last slice and find maxtime
+  ti._maxtime = 0;
+
   slices_map_t::iterator pos = ti._slices.begin();
   slices_map_t::iterator end = ti._slices.end();
+
   for (; pos != end; ++pos)
   {
+    // slice list for _taskid
+    slice_list_t& sl = pos->second;
     if (sl.size() == 0)
       continue ;
 
-    slice_list_t::iterator& last = sl.back();
-    if (last->_stop <= last->_start)
-      last->_stop = ti._maxtime;
+    slice_t& last = sl.back();
+    if (last._stop <= last._start)
+      last._stop = ti._maxtime;
+
+    const uint64_t diff = sl.back()._stop - sl.front()._start;
+    if (diff > ti._maxtime)
+      ti._maxtime = diff;
+
+    // adjust, no longer a base
+    sl.front()._start = 0;
   }
 
-  error = 0;
-
- on_error:
   unmap_file(&mf);
 
-  return error;
+  return 0;
 }
 
 #if 0 // todo
@@ -278,14 +289,15 @@ static void draw_rect
 
 static int output_slices(const char* path, const trace_info_t& ti)
 {
+#if 0
   // state color step
-  const size_t scs = 255 / ti._states.size();
+  const size_t scs = 255 / ti._statids.size();
 
   // heigth unit size
-  const size_t hus = img.heigth / ti._tasks.size();
+  const double hus = img.heigth / ti._tasks.size();
 
   // width unit size
-  const size_t wus = img.width / (ti._max_time - ti._min_time);
+  const double wus = img.width / (size_t)ti._maxtime;
 
   // foreach slice list
   slices_map_t::const_iterator smi = ti._slices.begin();
@@ -301,12 +313,14 @@ static int output_slices(const char* path, const trace_info_t& ti)
     {
 #if 0 // todo
       const unsigned int rgb = id_to_index(si->_statid, ti._statid_map) * scs;
-      const size_t rw = (si->_stop - si->_start) * wus;
-      draw_rect(si._time, si->_start * wus, tid * hus, wus, rws, rgb);
+      const size_t rw = (double)(si->_stop - si->_start) * wus;
+      draw_rect
+	(si._time, (double)si->_start * wus, (double)tid * hus, wus, rws, rgb);
 #endif
     }
   }
 
+#endif
   return 0;
 }
 

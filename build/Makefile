@@ -14,12 +14,12 @@ LFLAGS	:=
 RM	:=	rm -f
 
 
-BIN	:=	eyed
+BIN	:=	kaaviz
 
 SRCS	:=	../src/main.cc		\
-		../src/bmp.c
+		../src/bmp.cc
 
-OBJS	:=	$(SRCS:.c=.o)
+OBJS	:=	$(SRCS:.cc=.o)
 
 
 all	:	$(BIN)
@@ -30,5 +30,5 @@ clean	:
 fclean	:	clean
 		$(RM) $(BIN)
 re	:	fclean all
-%.o	:	%.c
+%.o	:	%.cc
 		$(CC) $(CFLAGS) -o $@ -c $<
