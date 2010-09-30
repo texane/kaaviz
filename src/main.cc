@@ -2,7 +2,7 @@
 // Made by fabien le mentec <texane@gmail.com>
 // 
 // Started on  Wed Sep 29 21:18:01 2010 texane
-// Last update Thu Sep 30 05:37:25 2010 fabien le mentec
+// Last update Thu Sep 30 06:23:04 2010 fabien le mentec
 //
 
 
@@ -127,7 +127,11 @@ static int next_word(char*& line, char*& word)
   for (; *line && (*line != ' '); ++line)
     ;
 
-  *line = 0;
+  if (*line)
+  {
+    *line = 0;
+    ++line;
+  }
 
   return 0;
 }
@@ -187,13 +191,17 @@ static int next_trace(mapped_file_t* mf, trace_entry_t& te)
     return -1;
   te._time = (uint64_t)strtoul(word, NULL, 10);
 
-  // isdone statid
+  // isnew, statid
+  if (next_word(line, word) == -1)
+    return -1;
+
   const char* statid = word;
-  if ((*word == '>') || (*word == '<'))
+  te._isnew = true;
+  if ((*statid == '>') || (*statid == '<'))
   {
-    ++statid;
-    if (*word == '<')
+    if (*statid == '<')
       te._isnew = false;
+    ++statid;
   }
 
   te._statid = std::string(statid);
@@ -209,7 +217,7 @@ static int load_trace_file(const char* path, trace_info_t& ti)
     return -1;
 
   trace_entry_t te;
-  while ((next_trace(&mf, te)) != -1)
+  while (next_trace(&mf, te) != -1)
   {
     // is this a new task
     slices_map_t::iterator smi = ti._slices.find(te._taskid);
@@ -230,7 +238,6 @@ static int load_trace_file(const char* path, trace_info_t& ti)
 
     // slice list for _taskid
     slice_list_t& sl = smi->second;
-
     if (sl.size())
     {
       // convert to relative time
@@ -246,7 +253,7 @@ static int load_trace_file(const char* path, trace_info_t& ti)
     if (te._isnew == true)
     {
       const size_t index = id_to_index(te._statid, ti._statids);
-      sl.push_back(slice(index, te._time));
+      sl.push_back(slice_t(te._time, index));
     }
   }
 
@@ -263,16 +270,16 @@ static int load_trace_file(const char* path, trace_info_t& ti)
     if (sl.size() == 0)
       continue ;
 
-    slice_t& last = sl.back();
-    if (last._stop <= last._start)
-      last._stop = ti._maxtime;
-
     const uint64_t diff = sl.back()._stop - sl.front()._start;
     if (diff > ti._maxtime)
       ti._maxtime = diff;
 
     // adjust, no longer a base
     sl.front()._start = 0;
+
+    // close if needed last
+    if (sl.back()._stop <= sl.back()._start)
+      sl.back()._stop = ti._maxtime;
   }
 
   unmap_file(&mf);
@@ -298,17 +305,22 @@ static int output_slices(const char* path, const trace_info_t& ti)
 
   // width unit size
   const double wus = img.width / (size_t)ti._maxtime;
+#endif
+
+  printf("maxtime: %llu\n", ti._maxtime);
 
   // foreach slice list
   slices_map_t::const_iterator smi = ti._slices.begin();
   slices_map_t::const_iterator sme = ti._slices.end();
   for (; smi != sme; ++smi)
   {
-    const size_t tid = id_to_index(smi->first, ti._taskids);
+    // const size_t tid = id_to_index(smi->first, ti._taskids);
+
+    printf("%s: ", smi->first.c_str());
 
     // foreach slice
-    slices_list_t::const_iterator sli = smi->first->begin();
-    slices_list_t::const_iterator sle = smi->first->end();
+    slice_list_t::const_iterator sli = smi->second.begin();
+    slice_list_t::const_iterator sle = smi->second.end();
     for (; sli != sle; ++sli)
     {
 #if 0 // todo
@@ -317,10 +329,11 @@ static int output_slices(const char* path, const trace_info_t& ti)
       draw_rect
 	(si._time, (double)si->_start * wus, (double)tid * hus, wus, rws, rgb);
 #endif
+      printf("[%llu - %llu[", sli->_start, sli->_stop);
     }
+    printf("\n");
   }
 
-#endif
   return 0;
 }
 
@@ -329,7 +342,7 @@ int main(int ac, char** av)
 {
   trace_info_t ti;
 
-  if (load_trace_file("../dat/0.kv", ti) == -1)
+  if (load_trace_file("../dat/2.kv", ti) == -1)
     return -1;
 
   output_slices("/tmp/foo.bmp", ti);
