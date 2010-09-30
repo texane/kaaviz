@@ -27,6 +27,10 @@ int bmp_store_file(struct bmp*, const char*);
 int bmp_set_format(struct bmp*, uint16_t, uint32_t, uint32_t);
 void* bmp_get_data(struct bmp*);
 int bmp_get_header(struct bmp*, uint8_t*, uint32_t*);
+void bmp_draw_rect
+(struct bmp*, uint32_t, uint32_t, uint32_t, uint32_t, const uint8_t*);
+void bmp_clear(struct bmp*);
+
 
 #if _DEBUG
 void bmp_print(const struct bmp*);

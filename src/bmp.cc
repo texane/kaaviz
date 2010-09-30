@@ -383,6 +383,51 @@ int bmp_get_header(struct bmp* bmp, uint8_t* buf, uint32_t* size)
   return 0;
 }
 
+static inline void bmp_put_pixel
+(bmp_t* bmp, uint32_t x, uint32_t y, const uint8_t* c)
+{
+  uint8_t* const data = (uint8_t*)bmp_get_data(bmp) + (y * bmp->width + x) * (bmp->bpp / 8);
+
+  data[0] = c[0];
+  data[1] = c[1];
+  data[2] = c[2];
+}
+
+void bmp_draw_rect
+(bmp_t* bmp, uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint8_t* rgb)
+{
+  const uint8_t black[] = { 0x00, 0x00, 0x00 };
+
+  const uint32_t savx = x;
+  const uint32_t savy = y;
+  const uint32_t lastx = x + w;
+  const uint32_t lasty = y + h;
+
+  for (; y < lasty; ++y)
+    for (x = savx; x < lastx; ++x)
+      bmp_put_pixel(bmp, x, y, rgb);
+
+  if (w > 2)
+    for (y = savy; y < lasty; ++y)
+    {
+      bmp_put_pixel(bmp, savx, y, black);
+      bmp_put_pixel(bmp, lastx - 1, y, black);
+    }
+
+  if (h > 2)
+    for (x = savx; x < lastx; ++x)
+    {
+      bmp_put_pixel(bmp, x, savy, black);
+      bmp_put_pixel(bmp, x, lasty - 1, black);
+    }
+}
+
+void bmp_clear(bmp_t* bmp)
+{
+  const uint8_t rgb[3] = {0xff, 0xff, 0xff};
+  bmp_draw_rect(bmp, 0, 0, bmp->width, bmp->height, rgb);
+}
+
 
 #if _DEBUG
 

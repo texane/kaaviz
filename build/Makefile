@@ -9,7 +9,7 @@
 
 CC	:=	g++
 LD	:=	g++
-CFLAGS	:=	-Wall -O3 -Werror -D_DEBUG=1 -I../src
+CFLAGS	:=	-Wall -O3 -I../src
 LFLAGS	:=
 RM	:=	rm -f
 

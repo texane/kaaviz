@@ -2,7 +2,7 @@
 // Made by fabien le mentec <texane@gmail.com>
 // 
 // Started on  Wed Sep 29 21:18:01 2010 texane
-// Last update Thu Sep 30 07:18:24 2010 fabien le mentec
+// Last update Thu Sep 30 10:58:35 2010 fabien le mentec
 //
 
 
@@ -223,6 +223,10 @@ static int load_trace_file(const char* path, trace_info_t& ti)
     slices_map_t::iterator smi = ti._slices.find(te._taskid);
     if (smi == ti._slices.end())
     {
+      // new taskid -> index
+      ti._taskids.insert(std::make_pair(te._taskid, ti._taskids.size()));
+
+      // new slice
       slices_map_t::value_type keyval =
 	std::make_pair(te._taskid, slice_list_t());
       smi = ti._slices.insert(keyval).first;
@@ -288,55 +292,95 @@ static int load_trace_file(const char* path, trace_info_t& ti)
   return 0;
 }
 
-#if 0 // todo
-static void draw_rect
-(bmp_t& bmp, uint32_t x, uint32_t y, uint32_t w, uint32_t h)
+// color allocator
+
+static void generate_colors(size_t)
 {
 }
-#endif
+
+static inline const uint8_t* get_color(size_t index)
+{
+  static uint8_t rgb[][3] =
+  {
+    { 0xff, 0x00, 0x00 },
+    { 0x00, 0xff, 0x00 },
+    { 0xff, 0x00, 0xff },
+    { 0x10, 0x10, 0x00 },
+    { 0x10, 0x00, 0x10 },
+    { 0x00, 0x10, 0x10 },
+    { 0x10, 0x00, 0x00 },
+    { 0x00, 0x10, 0x00 },
+    { 0x00, 0x00, 0x10 }
+  };
+
+  return rgb[index];
+}
 
 static int output_slices
 (const char* path, const trace_info_t& ti)
 {
-#if 0
-  // state color step
-  const size_t scs = 255 / ti._statids.size();
+#define IMAGE_WIDTH 700
+#define IMAGE_HEIGHT 300
 
   // heigth unit size
-  const double hus = img.heigth / ti._tasks.size();
-
+  const double hus = (double)IMAGE_HEIGHT / (double)ti._taskids.size();
   // width unit size
-  const double wus = img.width / (size_t)ti._maxtime;
-#endif
+  const double wus = (double)IMAGE_WIDTH / (double)ti._maxtime;
 
-  printf("maxtime: %llu\n", ti._maxtime);
+  slices_map_t::const_iterator smi;
+  slices_map_t::const_iterator sme;
+
+  int error = -1;
+
+  uint8_t* data;
+
+  generate_colors(ti._statids.size());
+
+  bmp_t* const bmp = bmp_create();
+  if (bmp == NULL)
+    return -1;
+
+  if (bmp_set_format(bmp, 24, IMAGE_WIDTH, IMAGE_HEIGHT) == -1)
+    goto on_error;
+
+  data = (uint8_t*)bmp_get_data(bmp);
+  if (data == NULL)
+    goto on_error;
+
+  bmp_clear(bmp);
 
   // foreach slice list
-  slices_map_t::const_iterator smi = ti._slices.begin();
-  slices_map_t::const_iterator sme = ti._slices.end();
+  smi = ti._slices.begin();
+  sme = ti._slices.end();
   for (; smi != sme; ++smi)
   {
-    // const size_t tid = id_to_index(smi->first, ti._taskids);
-
-    printf("%s: ", smi->first.c_str());
+    const size_t tid = id_to_index(smi->first, ti._taskids);
 
     // foreach slice
     slice_list_t::const_iterator sli = smi->second.begin();
     slice_list_t::const_iterator sle = smi->second.end();
     for (; sli != sle; ++sli)
     {
-#if 0 // todo
-      const unsigned int rgb = id_to_index(si->_statid, ti._statid_map) * scs;
-      const size_t rw = (double)(si->_stop - si->_start) * wus;
-      draw_rect
-	(si._time, (double)si->_start * wus, (double)tid * hus, wus, rws, rgb);
-#endif
-      printf("[%llu - %llu[", sli->_start, sli->_stop);
+      const uint8_t* const rgb = get_color((size_t)sli->_state);
+
+      const uint32_t x = (uint32_t)((double)sli->_start * wus);
+      const uint32_t y = (uint32_t)((double)tid * hus);
+      const uint32_t w = (uint32_t)((double)(sli->_stop - sli->_start) * wus);
+
+      bmp_draw_rect(bmp, x, y, w, (uint32_t)hus, rgb);
     }
-    printf("\n");
   }
 
-  return 0;
+  if (bmp_store_file(bmp, path) == -1)
+    goto on_error;
+
+  error = 0;
+
+ on_error:
+  if (bmp != NULL)
+    bmp_destroy(bmp);
+
+  return error;
 }
 
 
