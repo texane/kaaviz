@@ -2,7 +2,7 @@
 // Made by fabien le mentec <texane@gmail.com>
 // 
 // Started on  Wed Sep 29 21:18:01 2010 texane
-// Last update Thu Sep 30 06:17:38 2010 texane
+// Last update Thu Sep 30 05:08:29 2010 fabien le mentec
 //
 
 
@@ -106,11 +106,10 @@ typedef struct trace_entry
 {
   std::string _taskid;
   uint64_t _time;
-  bool _hasdone;
-  bool _isdone;
+  bool _isnew;
   std::string _statid;
 
-  struct trace_entry() : _hasdone(false) {}
+  struct trace_entry() : _isnew(true) {}
 
 } trace_entry_t;
 
@@ -134,25 +133,38 @@ static int next_word(char*& line, char* word)
 
 // trace info
 
-typedef std::map
-typedef std::map<std::string, size_t> state_map_t;
-
 typedef struct slice
 {
   uint64_t _start;
   uint64_t _stop;
-  uint64_t _state;
+  size_t _state;
+
+  slice() : _start(0), _stop(0) {}
+  slice(uint64_t start, size_t state) :
+    _start(start), _stop(0), _state(state) {}
+
 } slice_t;
+
+typedef std::list<slice_t> slice_list_t;
+typedef std::map<std::string, slice_list_t> slices_map_t;
+typedef std::map<std::string, size_t> id_map_t;
 
 typedef struct trace_info
 {
   // taskid -> slices
-  std::map< std::string, std::list<slice_t> > _slices;
+  slices_map_t _slices;
   // taskid -> index
-  std::map<std::string, size_t> _taskid_index; 
+  id_map_t _taskids;
   // statid -> index
-  std::map<std::string, size_t> _statid_index;
+  id_map_t _statids;
 } trace_info_t;
+
+static inline size_t id_to_index
+(const std::string& id, const id_map_t& map)
+{
+  // assume id a valid key
+  return map.find(id)->second;
+}
 
 static int next_trace(mapped_file_t* mf, trace_entry_t& te)
 {
@@ -171,15 +183,13 @@ static int next_trace(mapped_file_t* mf, trace_entry_t& te)
     return -1;
   te._time = (uint64_t)strtoul(word);
 
-  // isdone
+  // isdone statid
   const char* statid = word;
   if ((*word == '>') || (*word == '<'))
   {
     ++statid;
-    te._hasdone = true;
-    te._isdone = false;
     if (*word == '<')
-      te._isdone = true;
+      te._isnew = false;
   }
 
   te._statid = std::string(statid);
@@ -205,7 +215,50 @@ static int load_trace_file(const char* path, trace_info_t& ti)
   trace_entry_t te;
   while ((next_trace(&mf, &te)) != -1)
   {
-    // todo
+    // is this a new task
+    slices_map_t::iterator smi = ti._slices.find(ti._taskid);
+    if (smi == ti._slices.end())
+    {
+      slices_map_t::value_type keyval =
+	std::make_pair(ti._taskid, slice_list_t());
+      smi = ti._slices.insert(keyval)->first;
+    }
+
+    // is this a new state
+    if (ti._statids.find(te._statid) == ti._statids.end())
+    {
+      id_map_t::value_type keyval =
+	std::make_pair(ti._statid, ti._statids.size());
+      ti._statids.insert(keyval);
+    }
+
+    // slice list for _taskid
+    slice_list_t& sl = smi->second;
+
+    // close the last slice if needed
+    if (sl.size())
+    {
+      slice_list_t::iterator& last = sl.back();
+      if (last->_stop <= last->_start)
+	last->_stop = te._time;
+    }
+
+    // insert new slice if needed
+    if (te._isnew == true)
+      sl.push_back(slice(id_to_index(te._statid), te._time));
+  }
+
+  // foreach task, close the last slice
+  slices_map_t::iterator pos = ti._slices.begin();
+  slices_map_t::iterator end = ti._slices.end();
+  for (; pos != end; ++pos)
+  {
+    if (sl.size() == 0)
+      continue ;
+
+    slice_list_t::iterator& last = sl.back();
+    if (last->_stop <= last->_start)
+      last->_stop = ti._maxtime;
   }
 
   error = 0;
@@ -216,17 +269,12 @@ static int load_trace_file(const char* path, trace_info_t& ti)
   return error;
 }
 
+#if 0 // todo
 static void draw_rect
 (bmp_t& bmp, uint32_t x, uint32_t y, uint32_t w, uint32_t h)
 {
-  // todo
 }
-
-static inline size_t id_to_index
-(const std::string& id, const id_map_t& map)
-{
-  return map.find(id).second();
-}
+#endif
 
 static int output_slices(const char* path, const trace_info_t& ti)
 {
@@ -239,21 +287,23 @@ static int output_slices(const char* path, const trace_info_t& ti)
   // width unit size
   const size_t wus = img.width / (ti._max_time - ti._min_time);
 
-  std::map<slices_t>::const_iterator tsi = ti._slices.begin();
-  std::map<slices_t>::const_iterator tse = ti._slices.end();
-  size_t tid = 0;
-
   // foreach slice list
-  for (; tsi != tse; ++tsi, ++tid)
+  slices_map_t::const_iterator smi = ti._slices.begin();
+  slices_map_t::const_iterator sme = ti._slices.end();
+  for (; smi != sme; ++smi)
   {
-    const size_t taskid_index = id_to_index(tsi, ti._taskid_map);
+    const size_t tid = id_to_index(smi->first, ti._taskids);
 
     // foreach slice
-    for (; si != se; ++si)
+    slices_list_t::const_iterator sli = smi->first->begin();
+    slices_list_t::const_iterator sle = smi->first->end();
+    for (; sli != sle; ++sli)
     {
+#if 0 // todo
       const unsigned int rgb = id_to_index(si->_statid, ti._statid_map) * scs;
       const size_t rw = (si->_stop - si->_start) * wus;
       draw_rect(si._time, si->_start * wus, tid * hus, wus, rws, rgb);
+#endif
     }
   }
 
