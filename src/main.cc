@@ -2,7 +2,7 @@
 // Made by fabien le mentec <texane@gmail.com>
 // 
 // Started on  Wed Sep 29 21:18:01 2010 texane
-// Last update Thu Sep 30 10:58:35 2010 fabien le mentec
+// Last update Thu Sep 30 11:59:03 2010 fabien le mentec
 //
 
 
@@ -189,7 +189,7 @@ static int next_trace(mapped_file_t* mf, trace_entry_t& te)
   // time
   if (next_word(line, word) == -1)
     return -1;
-  te._time = (uint64_t)strtoul(word, NULL, 10);
+  te._time = (uint64_t)strtoull(word, NULL, 10);
 
   // isnew, statid
   if (next_word(line, word) == -1)
@@ -281,8 +281,16 @@ static int load_trace_file(const char* path, trace_info_t& ti)
     const uint64_t diff = sl.back()._stop - sl.front()._start;
     if (diff > ti._maxtime)
       ti._maxtime = diff;
+  }
 
-    // close if needed last
+  // close if needed last
+  for (pos = ti._slices.begin(); pos != end; ++pos)
+  {
+    // slice list for _taskid
+    slice_list_t& sl = pos->second;
+    if (sl.size() == 0)
+      continue ;
+
     if (sl.back()._stop <= sl.back()._start)
       sl.back()._stop = ti._maxtime;
   }
@@ -319,7 +327,7 @@ static inline const uint8_t* get_color(size_t index)
 static int output_slices
 (const char* path, const trace_info_t& ti)
 {
-#define IMAGE_WIDTH 700
+#define IMAGE_WIDTH 1000
 #define IMAGE_HEIGHT 300
 
   // heigth unit size
@@ -388,7 +396,7 @@ int main(int ac, char** av)
 {
   trace_info_t ti;
 
-  if (load_trace_file("../dat/0.kv", ti) == -1)
+  if (load_trace_file("/home/texane/tmp/o.kv", ti) == -1)
     return -1;
 
   output_slices("/tmp/foo.bmp", ti);
