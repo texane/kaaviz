@@ -2,7 +2,7 @@
 // Made by fabien le mentec <texane@gmail.com>
 // 
 // Started on  Wed Sep 29 21:18:01 2010 texane
-// Last update Thu Sep 30 06:23:04 2010 fabien le mentec
+// Last update Thu Sep 30 07:18:24 2010 fabien le mentec
 //
 
 
@@ -270,12 +270,13 @@ static int load_trace_file(const char* path, trace_info_t& ti)
     if (sl.size() == 0)
       continue ;
 
+    // adjust, no longer a base
+    sl.front()._start = 0;
+
+    // maxtime
     const uint64_t diff = sl.back()._stop - sl.front()._start;
     if (diff > ti._maxtime)
       ti._maxtime = diff;
-
-    // adjust, no longer a base
-    sl.front()._start = 0;
 
     // close if needed last
     if (sl.back()._stop <= sl.back()._start)
@@ -294,7 +295,8 @@ static void draw_rect
 }
 #endif
 
-static int output_slices(const char* path, const trace_info_t& ti)
+static int output_slices
+(const char* path, const trace_info_t& ti)
 {
 #if 0
   // state color step
@@ -342,7 +344,7 @@ int main(int ac, char** av)
 {
   trace_info_t ti;
 
-  if (load_trace_file("../dat/2.kv", ti) == -1)
+  if (load_trace_file("../dat/0.kv", ti) == -1)
     return -1;
 
   output_slices("/tmp/foo.bmp", ti);
