@@ -29,7 +29,7 @@
 typedef struct kv_trace
 {
   uint64_t time;
-  uint32_t statid;
+  uint64_t statid;
 } kv_trace_t;
 
 
@@ -105,7 +105,21 @@ static inline void kv_flush_buffer(kv_perthread_t* perthread)
   while (head != tail)
   {
     kv_trace_t* pos = &buffer->traces[head];
-    printf("%u %llu %x\n", perthread->tid, pos->time, pos->statid);
+
+    unsigned char buf[9];
+    memcpy(buf, (void*)&pos->statid, 8);
+    buf[8] = 0;
+
+    const size_t len = strlen((const char*)buf);
+    size_t i;
+    for (i = 0; i < (len / 2); ++i)
+    {
+      const unsigned char tmp = buf[i];
+      buf[i] = buf[(len - 1) - i];
+      buf[(len - 1) - i] = tmp;
+    }
+
+    printf("%u %llu %s\n", perthread->tid, pos->time, buf);
     head = (head + 1) & (KV_CONFIG_TRACE_COUNT - 1);
   }
 }
@@ -139,7 +153,7 @@ static inline void __attribute__((destructor)) kv_cleanup(void)
 /* exported
  */
 
-static inline void kv_enter(uint32_t statid)
+static inline void kv_enter(uint64_t statid)
 {
   /* get the time first */
   const uint64_t time = kv_rdtsc();
@@ -151,7 +165,7 @@ static inline void kv_enter(uint32_t statid)
   trace->statid = statid;
 }
 
-static inline void kv_leave(uint32_t statid)
+static inline void kv_leave(uint64_t statid)
 {
   /* get the time first */
   const uint64_t time = kv_rdtsc();

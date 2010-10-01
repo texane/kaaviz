@@ -2,7 +2,7 @@
 // Made by fabien le mentec <texane@gmail.com>
 // 
 // Started on  Wed Sep 29 21:18:01 2010 texane
-// Last update Fri Oct  1 20:37:52 2010 texane
+// Last update Fri Oct  1 21:29:25 2010 texane
 //
 
 
@@ -312,13 +312,13 @@ static inline const uint8_t* get_color(size_t index)
   {
     { 0xff, 0x00, 0x00 },
     { 0x00, 0xff, 0x00 },
-    { 0xff, 0x00, 0xff },
-    { 0x10, 0x10, 0x00 },
-    { 0x10, 0x00, 0x10 },
-    { 0x00, 0x10, 0x10 },
-    { 0x10, 0x00, 0x00 },
-    { 0x00, 0x10, 0x00 },
-    { 0x00, 0x00, 0x10 }
+    { 0x00, 0x00, 0xff },
+    { 0x80, 0x80, 0x00 },
+    { 0x80, 0x00, 0x80 },
+    { 0x00, 0x80, 0x80 },
+    { 0x80, 0x00, 0x00 },
+    { 0x00, 0x80, 0x00 },
+    { 0x00, 0x00, 0x80 }
   };
 
   return rgb[index];
@@ -327,7 +327,7 @@ static inline const uint8_t* get_color(size_t index)
 static int output_slices
 (const char* path, const trace_info_t& ti)
 {
-#define IMAGE_WIDTH 1000
+#define IMAGE_WIDTH 1500
 #define IMAGE_HEIGHT 300
 
   // heigth unit size
