@@ -117,5 +117,10 @@ static inline void kv_write(const char* statid)
   kv_make_trace(trace, taskid, statid);
 }
 
+static inline void kv_flush(void)
+{
+  kv_flush_buffer(kv_get_perthread());
+}
+
 
 #endif /* ! KV_H_INCLUDED */
