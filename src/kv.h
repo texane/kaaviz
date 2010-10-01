@@ -2,26 +2,42 @@
 # define KV_H_INCLUDED
 
 
+
 #include <stdint.h>
 #include <pthread.h>
 #include <string.h>
+#include <stdio.h>
 
 
-/* internal */
+
+/* -Wno-multichar to use multichar constant
+ */
+
+
+/* compile time configuration
+ */
+
+#define KV_CONFIG_FLUSH_STDOUT 1
+#define KV_CONFIG_FLUSH_MEMORY 0
+#define KV_CONFIG_TRACE_COUNT 1024 /* must be pow2 */
+#define KV_CONFIG_THREAD_COUNT 64
+
+
+/* internal
+ */
 
 typedef struct kv_trace
 {
-  uint64_t taskid;
   uint64_t time;
-  unsigned char statid[8];
+  uint32_t statid;
 } kv_trace_t;
 
 
 typedef struct kv_buffer
 {
-  size_t index;
-#define KV_TRACE_COUNT 32
-  kv_trace_t traces[KV_TRACE_COUNT];
+  size_t head;
+  size_t tail;
+  kv_trace_t traces[KV_CONFIG_TRACE_COUNT];
 } kv_buffer_t;
 
 
@@ -32,14 +48,13 @@ typedef struct kv_perthread
 } kv_perthread_t __attribute__((aligned(64)));
 
 
-#define KV_THREAD_COUNT 64
-static kv_perthread_t kv_perthread_array[KV_THREAD_COUNT];
+static kv_perthread_t kv_perthread_array[KV_CONFIG_THREAD_COUNT];
 static volatile unsigned long kv_perthread_index __attribute__((aligned)) = 0;
 
 static pthread_key_t kv_key;
 
 
-static inline void kv_rdtsc(uint64_t* ticks)
+static inline uint64_t kv_rdtsc(void)
 {
   union
   {
@@ -58,40 +73,50 @@ static inline void kv_rdtsc(uint64_t* ticks)
 
 static inline kv_perthread_t* kv_get_perthread(void)
 {
-  kv_perthread_t* perthread = pthread_get_specific(&kv_key);
+  kv_perthread_t* perthread = pthread_getspecific(kv_key);
 
   if (perthread == NULL)
   {
     const unsigned long index =
       __sync_fetch_and_add(&kv_perthread_index, 1UL);
-    perthread = &kv_perthread_index[index];
+
+    perthread = &kv_perthread_array[index];
+    pthread_setspecific(kv_key, (void*)perthread);
+
+    perthread->buffer.head = 0;
+    perthread->buffer.tail = 0;
     perthread->tid = index;
   }
 
   return perthread;
 }
 
-static inline void kv_flush_buffer(kv_buffer_t* buffer)
+static inline void kv_flush_buffer(kv_perthread_t* perthread)
 {
-  const kv_trace_t* pos = buffer->traces;
+  kv_buffer_t* const buffer = &perthread->buffer;
 
-  size_t index;
-  for (index = 0; index < buffer->index; ++index, ++pos)
-    printf("%llu %llu %s\n", pos->taskid, pos->time, pos->statid);
+  /* capture the [head, tail[ range */
+  size_t head = buffer->head;
+  const size_t tail = buffer->tail;
+
+  /* reset by setting head to tail */
+  buffer->head = buffer->tail;
+
+  while (head != tail)
+  {
+    kv_trace_t* pos = &buffer->traces[head];
+    printf("%u %llu %x\n", perthread->tid, pos->time, pos->statid);
+    head = (head + 1) & (KV_CONFIG_TRACE_COUNT - 1);
+  }
 }
 
 static inline kv_trace_t* kv_alloc_trace(kv_perthread_t* perthread)
 {
-  if (perthread->buffer.index == KV_TRACE_COUNT)
-    kv_flush_buffer(&perthread->buffer);
+  kv_trace_t* const trace = &perthread->buffer.traces[perthread->buffer.tail];
+  perthread->buffer.tail =
+    (perthread->buffer.tail + 1) & (KV_CONFIG_TRACE_COUNT - 1);
+  return trace;
 }
-
-static inline void kv_make_trace(kv_trace_t* trace)
-{
-}
-
-
-/* exported */
 
 static inline void __attribute__((constructor)) kv_initialize(void)
 {
@@ -107,14 +132,35 @@ static inline void __attribute__((destructor)) kv_cleanup(void)
   for (i = 0; i < kv_perthread_index; ++i)
     kv_flush_buffer(&kv_perthread_array[i]);
 
-  pthread_key_destroy(&kv_key);
+  pthread_key_delete(kv_key);
 }
 
-static inline void kv_write(const char* statid)
+
+/* exported
+ */
+
+static inline void kv_enter(uint32_t statid)
 {
+  /* get the time first */
+  const uint64_t time = kv_rdtsc();
+
   kv_perthread_t* const perthread = kv_get_perthread();
-  kv_trace_t* const = kv_alloc_trace(perthread);
-  kv_make_trace(trace, taskid, statid);
+
+  kv_trace_t* const trace = kv_alloc_trace(perthread);
+  trace->time = time;
+  trace->statid = statid;
+}
+
+static inline void kv_leave(uint32_t statid)
+{
+  /* get the time first */
+  const uint64_t time = kv_rdtsc();
+
+  kv_perthread_t* const perthread = kv_get_perthread();
+
+  kv_trace_t* const trace = kv_alloc_trace(perthread);
+  trace->time = time;
+  trace->statid = statid;
 }
 
 static inline void kv_flush(void)

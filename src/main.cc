@@ -2,7 +2,7 @@
 // Made by fabien le mentec <texane@gmail.com>
 // 
 // Started on  Wed Sep 29 21:18:01 2010 texane
-// Last update Thu Sep 30 11:59:03 2010 fabien le mentec
+// Last update Fri Oct  1 20:37:52 2010 texane
 //
 
 
@@ -261,13 +261,12 @@ static int load_trace_file(const char* path, trace_info_t& ti)
     }
   }
 
-  // foreach task, close the last slice and find maxtime
-  ti._maxtime = 0;
-
-  slices_map_t::iterator pos = ti._slices.begin();
+  slices_map_t::iterator pos;
   slices_map_t::iterator end = ti._slices.end();
 
-  for (; pos != end; ++pos)
+  // find maxtime
+  ti._maxtime = 0;
+  for (pos = ti._slices.begin(); pos != end; ++pos)
   {
     // slice list for _taskid
     slice_list_t& sl = pos->second;
@@ -278,12 +277,13 @@ static int load_trace_file(const char* path, trace_info_t& ti)
     sl.front()._start = 0;
 
     // maxtime
-    const uint64_t diff = sl.back()._stop - sl.front()._start;
+    const uint64_t last = std::max(sl.back()._start, sl.front()._stop) + 1;
+    const uint64_t diff = last - sl.front()._start;
     if (diff > ti._maxtime)
       ti._maxtime = diff;
   }
 
-  // close if needed last
+  // close last if needed
   for (pos = ti._slices.begin(); pos != end; ++pos)
   {
     // slice list for _taskid
@@ -396,7 +396,7 @@ int main(int ac, char** av)
 {
   trace_info_t ti;
 
-  if (load_trace_file("/home/texane/tmp/o.kv", ti) == -1)
+  if (load_trace_file("/tmp/foo.kv", ti) == -1)
     return -1;
 
   output_slices("/tmp/foo.bmp", ti);
